@@ -82,6 +82,17 @@ def parse_filename(filename):
 def insert_into_supabase(date, workout_type, content):
     """Insert workout data into Supabase"""
     try:
+        # Check for existing workout on the same date
+        existing_workout = supabase.table('Workouts_2024') \
+            .select('*') \
+            .eq('date', date.isoformat()) \
+            .execute()
+        
+        if existing_workout.data:
+            print(f"  Skipping: Workout already exists for {date.isoformat()}")
+            return
+            
+        # If no existing workout, proceed with insert
         data = {
             'date': date.isoformat(),
             'workout_type': workout_type,
@@ -142,15 +153,15 @@ def check_folder(drive_service, sheet):
                 # Insert into Supabase
                 insert_into_supabase(date, workout_type, content)
                 
-                row = [
-                    date.strftime('%Y-%m-%d'),
-                    workout_type,
-                    content
-                ]
-                print("  Appending to spreadsheet...")
-                sheet.append_row(row)
-                workouts_added += 1
-                print(f"  Successfully added workout: {date.strftime('%Y-%m-%d')} - {workout_type}")
+                # row = [
+                #     date.strftime('%Y-%m-%d'),
+                #     workout_type,
+                #     content
+                # ]
+                # print("  Appending to spreadsheet...")
+                # sheet.append_row(row)
+                # workouts_added += 1
+                # print(f"  Successfully added workout: {date.strftime('%Y-%m-%d')} - {workout_type}")
             else:
                 print(f"  Skipping: Not a workout note")
         

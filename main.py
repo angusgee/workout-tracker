@@ -9,6 +9,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
+from supabase import create_client
 
 # Load environment variables
 load_dotenv()
@@ -18,6 +19,13 @@ FOLDER_ID = os.getenv('GOOGLE_FOLDER_ID')
 SPREADSHEET_ID = os.getenv('GOOGLE_SPREADSHEET_ID')
 KEYWORDS = ["PULL", "PUSH", "FULL BODY", "A", "B"]
 SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+
+supabase = create_client(
+    SUPABASE_URL, 
+    SUPABASE_KEY,
+)
 
 def setup_google_apis():
     """Initialize and return Google API clients"""
@@ -71,6 +79,23 @@ def parse_filename(filename):
         print(f"  Error parsing date: {e}")
         return None, None
 
+def insert_into_supabase(date, workout_type, content):
+    """Insert workout data into Supabase"""
+    try:
+        data = {
+            'date': date.isoformat(),
+            'workout_type': workout_type,
+            'notes': content
+        }
+        print(f"  Attempting to insert data: {data}")
+        result = supabase.table('Workouts_2024').insert(data).execute()
+        print(f"  Insert result: {result}")
+        print("  Successfully inserted into Supabase")
+    except Exception as e:
+        print(f"  Error inserting into Supabase: {str(e)}")
+        print(f"  Error type: {type(e)}")
+        raise
+
 def check_folder(drive_service, sheet):
     try:
         print("\nChecking folder for files...")
@@ -114,6 +139,9 @@ def check_folder(drive_service, sheet):
                 content = file_data.getvalue().decode("utf-8")
                 print("  Successfully downloaded content")
                 
+                # Insert into Supabase
+                insert_into_supabase(date, workout_type, content)
+                
                 row = [
                     date.strftime('%Y-%m-%d'),
                     workout_type,
@@ -132,6 +160,7 @@ def check_folder(drive_service, sheet):
         print(f"Error processing files: {str(e)}")
         raise
 
+    
 if __name__ == "__main__":
     drive_service, sheet = setup_google_apis()
     check_folder(drive_service, sheet)

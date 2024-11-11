@@ -27,8 +27,8 @@ supabase = create_client(
     SUPABASE_KEY,
 )
 
+# Initialize and return Google API clients
 def setup_google_apis():
-    """Initialize and return Google API clients"""
     try:
         print("Setting up Google API clients...")
         creds = service_account.Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
@@ -44,6 +44,7 @@ def setup_google_apis():
         print(f"Error setting up Google API clients: {str(e)}")
         raise
 
+# Extract date and workout type from filename
 def parse_filename(filename):
     print(f"  Attempting to parse: {filename}")
     
@@ -80,7 +81,6 @@ def parse_filename(filename):
         return None, None
 
 def insert_into_supabase(date, workout_type, content):
-    """Insert workout data into Supabase"""
     try:
         # Check for existing workout on the same date
         existing_workout = supabase.table('Workouts_2024') \
@@ -107,6 +107,7 @@ def insert_into_supabase(date, workout_type, content):
         print(f"  Error type: {type(e)}")
         raise
 
+# Check the folder for files and process them
 def check_folder(drive_service, sheet):
     try:
         print("\nChecking folder for files...")
@@ -170,7 +171,6 @@ def check_folder(drive_service, sheet):
     except Exception as e:
         print(f"Error processing files: {str(e)}")
         raise
-
     
 if __name__ == "__main__":
     drive_service, sheet = setup_google_apis()

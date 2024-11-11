@@ -37,27 +37,73 @@ def setup_google_apis():
         raise
 
 def parse_filename(filename):
-    """Extract date and workout type from filenames like 'Sunday 3rd November PULL.txt'."""
-    match = re.match(r"(\w+) (\d{1,2})(?:st|nd|rd|th) (\w+) (\w+)\.txt", filename)
-    if match:
-        day, date, month, workout_type = match.groups()
-        return datetime.strptime(f"{date} {month} {datetime.now().year}", "%d %B %Y"), workout_type
-    return None, None
+    print(f"  Attempting to parse: {filename}")
+    
+    workout_type = None
+    for keyword in KEYWORDS:
+        if keyword in filename:
+            workout_type = keyword
+            break
+    
+    if not workout_type:
+        print("  No valid workout type found")
+        return None, None
+    
+    date_pattern = r'(\d{1,2})(?:st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\b|(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\b\s+(\d{1,2})(?:st|nd|rd|th)?'
+    date_match = re.search(date_pattern, filename)
+    
+    try:
+        groups = date_match.groups()
+        if groups[0]:
+            day, month = groups[0], groups[1]
+        else:
+            month, day = groups[2], groups[3]
+            
+        year = datetime.now().year
+        try:
+            date_obj = datetime.strptime(f"{day} {month} {year}", "%d %B %Y")
+        except ValueError:
+            date_obj = datetime.strptime(f"{day} {month} {year}", "%d %b %Y")
+        
+        return date_obj, workout_type
+        
+    except (ValueError, AttributeError) as e:
+        print(f"  Error parsing date: {e}")
+        return None, None
 
 def check_folder(drive_service, sheet):
     try:
-        files = drive_service.files().list(
-            q=f"'{FOLDER_ID}' in parents and mimeType contains 'text'",
-            fields="files(id, name, mimeType)",
-            pageSize=10
-        ).execute()
+        print("\nChecking folder for files...")
+        print(f"Using folder ID: {FOLDER_ID}")
         
-        file_list = files.get("files", [])
+        file_list = []
+        page_token = None
+        files_processed = 0
+        workouts_added = 0
+        
+        while True:
+            response = drive_service.files().list(
+                q=f"'{FOLDER_ID}' in parents and mimeType contains 'text'",
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageToken=page_token
+            ).execute()
+            
+            file_list.extend(response.get('files', []))
+            page_token = response.get('nextPageToken')
+            
+            if not page_token:
+                break
+        
+        print(f"Found {len(file_list)} files in folder:")
         
         for file in file_list:
+            files_processed += 1
+            print(f"\nProcessing file: {file['name']}")
             date, workout_type = parse_filename(file['name'])
             
             if date and workout_type:
+                print(f"  Parsed date: {date}, workout type: {workout_type}")
+                print("  Downloading file content...")
                 request = drive_service.files().get_media(fileId=file['id'])
                 file_data = io.BytesIO()
                 downloader = MediaIoBaseDownload(file_data, request)
@@ -66,14 +112,21 @@ def check_folder(drive_service, sheet):
                     status, done = downloader.next_chunk()
                 
                 content = file_data.getvalue().decode("utf-8")
+                print("  Successfully downloaded content")
                 
                 row = [
                     date.strftime('%Y-%m-%d'),
                     workout_type,
                     content
                 ]
+                print("  Appending to spreadsheet...")
                 sheet.append_row(row)
-                print(f"Added workout: {date.strftime('%Y-%m-%d')} - {workout_type}")
+                workouts_added += 1
+                print(f"  Successfully added workout: {date.strftime('%Y-%m-%d')} - {workout_type}")
+            else:
+                print(f"  Skipping: Not a workout note")
+        
+        print(f"\nSummary: Processed {files_processed} files, added {workouts_added} workouts to sheet")
             
     except Exception as e:
         print(f"Error processing files: {str(e)}")

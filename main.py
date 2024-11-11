@@ -17,7 +17,7 @@ load_dotenv()
 # Constants for Google APIs and configurations
 FOLDER_ID = os.getenv('GOOGLE_FOLDER_ID')
 SPREADSHEET_ID = os.getenv('GOOGLE_SPREADSHEET_ID')
-KEYWORDS = ["PULL", "PUSH", "FULL BODY", "A", "B"]
+KEYWORDS = ["PULL", "PUSH", "FULL BODY", "LEGS", "A", "B", "A day", "B day"]
 SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')

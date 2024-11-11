@@ -90,7 +90,7 @@ def insert_into_supabase(date, workout_type, content):
         
         if existing_workout.data:
             print(f"  Skipping: Workout already exists for {date.isoformat()}")
-            return
+            return False
             
         # If no existing workout, proceed with insert
         data = {
@@ -102,6 +102,7 @@ def insert_into_supabase(date, workout_type, content):
         result = supabase.table('Workouts_2024').insert(data).execute()
         print(f"  Insert result: {result}")
         print("  Successfully inserted into Supabase")
+        return True
     except Exception as e:
         print(f"  Error inserting into Supabase: {str(e)}")
         print(f"  Error type: {type(e)}")
@@ -151,22 +152,13 @@ def check_folder(drive_service, sheet):
                 content = file_data.getvalue().decode("utf-8")
                 print("  Successfully downloaded content")
                 
-                # Insert into Supabase
-                insert_into_supabase(date, workout_type, content)
-                
-                # row = [
-                #     date.strftime('%Y-%m-%d'),
-                #     workout_type,
-                #     content
-                # ]
-                # print("  Appending to spreadsheet...")
-                # sheet.append_row(row)
-                # workouts_added += 1
-                # print(f"  Successfully added workout: {date.strftime('%Y-%m-%d')} - {workout_type}")
+                # Insert into Supabase and increment counter if successful
+                if insert_into_supabase(date, workout_type, content):
+                    workouts_added += 1
             else:
                 print(f"  Skipping: Not a workout note")
         
-        print(f"\nSummary: Processed {files_processed} files, added {workouts_added} workouts to sheet")
+        print(f"\nSummary: Processed {files_processed} files, added {workouts_added} workouts to database")
             
     except Exception as e:
         print(f"Error processing files: {str(e)}")

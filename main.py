@@ -152,8 +152,11 @@ def check_folder(drive_service):
                 print("  Successfully downloaded content")
                 
                 # Insert into Supabase and increment counter if successful
-                if insert_into_supabase(date, workout_type, content):
+                success = insert_into_supabase(date, workout_type, content)
+                if success:
                     workouts_added += 1
+                    print(f"  New workout counter increased to: {workouts_added}")
+
             else:
                 print(f"  Skipping: Not a workout note")
         

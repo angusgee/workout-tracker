@@ -158,7 +158,9 @@ def check_folder(drive_service, sheet):
             else:
                 print(f"  Skipping: Not a workout note")
         
+        current_time = datetime.now().strftime("%H:%M:%S")
         print(f"\nSummary: Processed {files_processed} files, added {workouts_added} workouts to database")
+        print(f"Current time: {current_time}")
             
     except Exception as e:
         print(f"Error processing files: {str(e)}")

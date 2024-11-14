@@ -48,6 +48,8 @@ def setup_google_apis():
 def parse_filename(filename):
     print(f"  Attempting to parse: {filename}")
     
+    filename = filename.replace('Sept', 'Sep')
+    
     workout_type = None
     for keyword in KEYWORDS:
         if keyword in filename:

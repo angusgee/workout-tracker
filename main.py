@@ -4,7 +4,6 @@ import io
 import re
 import os
 from datetime import datetime
-import gspread
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -16,9 +15,8 @@ load_dotenv()
 
 # Constants for Google APIs and configurations
 FOLDER_ID = os.getenv('GOOGLE_FOLDER_ID')
-SPREADSHEET_ID = os.getenv('GOOGLE_SPREADSHEET_ID')
 KEYWORDS = ["PULL", "PUSH", "FULL BODY", "LEGS", "A", "B", "A day", "B day", "UPPER", "LOWER"]
-SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
@@ -35,10 +33,9 @@ def setup_google_apis():
         print(f"Using service account: {creds.service_account_email}")
         
         drive_service = build('drive', 'v3', credentials=creds)
-        sheet = gspread.authorize(creds).open_by_key(SPREADSHEET_ID).sheet1
         print("Successfully set up Google API clients")
         
-        return drive_service, sheet
+        return drive_service
         
     except Exception as e:
         print(f"Error setting up Google API clients: {str(e)}")
@@ -111,7 +108,7 @@ def insert_into_supabase(date, workout_type, content):
         raise
 
 # Check the folder for files and process them
-def check_folder(drive_service, sheet):
+def check_folder(drive_service):
     try:
         print("\nChecking folder for files...")
         print(f"Using folder ID: {FOLDER_ID}")
@@ -169,5 +166,5 @@ def check_folder(drive_service, sheet):
         raise
     
 if __name__ == "__main__":
-    drive_service, sheet = setup_google_apis()
-    check_folder(drive_service, sheet)
+    drive_service = setup_google_apis()
+    check_folder(drive_service)

@@ -3,12 +3,14 @@
 import io
 import re
 import os
+import time
 from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from dotenv import load_dotenv
 from supabase import create_client
+from functools import wraps
 
 # Load environment variables
 load_dotenv()
@@ -25,7 +27,19 @@ supabase = create_client(
     SUPABASE_KEY,
 )
 
+# Add timing decorator
+def timer(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print(f"Function '{func.__name__}' took {end - start:.2f} seconds to execute")
+        return result
+    return wrapper
+
 # Initialize and return Google API clients
+@timer
 def setup_google_apis():
     try:
         print("Setting up Google API clients...")
@@ -42,6 +56,7 @@ def setup_google_apis():
         raise
 
 # Extract date and workout type from filename
+@timer
 def parse_filename(filename):
     print(f"  Attempting to parse: {filename}")
     
@@ -79,95 +94,118 @@ def parse_filename(filename):
         print(f"  Error parsing date: {e}")
         return None, None
 
-def insert_into_supabase(date, workout_type, content):
-    try:
-        # Check for existing workout on the same date
-        existing_workout = supabase.table('Workouts_2024') \
-            .select('*') \
-            .eq('date', date.isoformat()) \
-            .execute()
+@timer
+def get_list_of_files(drive_service):
+        response = drive_service.files().list(
+            q=f"'{FOLDER_ID}' in parents and mimeType contains 'text'",
+            fields="nextPageToken, files(id, name, mimeType)"
+        ).execute()
         
-        if existing_workout.data:
-            print(f"  Skipping: Workout already exists for {date.isoformat()}")
-            return False
-            
-        # If no existing workout, proceed with insert
-        data = {
-            'date': date.isoformat(),
-            'workout_type': workout_type,
-            'notes': content
-        }
-        print(f"  Attempting to insert data: {data}")
-        result = supabase.table('Workouts_2024').insert(data).execute()
-        print(f"  Insert result: {result}")
-        print("  Successfully inserted into Supabase")
-        return True
-    except Exception as e:
-        print(f"  Error inserting into Supabase: {str(e)}")
-        print(f"  Error type: {type(e)}")
-        raise
-
-# Check the folder for files and process them
-def check_folder(drive_service):
-    try:
-        print("\nChecking folder for files...")
-        print(f"Using folder ID: {FOLDER_ID}")
-        
-        file_list = []
-        page_token = None
-        files_processed = 0
-        workouts_added = 0
-        
-        while True:
-            response = drive_service.files().list(
-                q=f"'{FOLDER_ID}' in parents and mimeType contains 'text'",
-                fields="nextPageToken, files(id, name, mimeType)",
-                pageToken=page_token
-            ).execute()
-            
-            file_list.extend(response.get('files', []))
-            page_token = response.get('nextPageToken')
-            
-            if not page_token:
-                break
-        
-        print(f"Found {len(file_list)} files in folder:")
+        file_list = response.get('files', [])
+        print(f"Found {len(file_list)} files in the folder:")
         
         for file in file_list:
-            files_processed += 1
-            print(f"\nProcessing file: {file['name']}")
-            date, workout_type = parse_filename(file['name'])
-            
-            if date and workout_type:
-                print(f"  Parsed date: {date}, workout type: {workout_type}")
-                print("  Downloading file content...")
-                request = drive_service.files().get_media(fileId=file['id'])
-                file_data = io.BytesIO()
-                downloader = MediaIoBaseDownload(file_data, request)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-                
-                content = file_data.getvalue().decode("utf-8")
-                print("  Successfully downloaded content")
-                
-                # Insert into Supabase and increment counter if successful
-                success = insert_into_supabase(date, workout_type, content)
-                if success:
-                    workouts_added += 1
-                    print(f"  New workout counter increased to: {workouts_added}")
+            print(f"  - {file['name']}")
+        return file_list
 
-            else:
-                print(f"  Skipping: Not a workout note")
-        
-        current_time = datetime.now().strftime("%H:%M:%S")
-        print(f"\nSummary: Processed {files_processed} files, added {workouts_added} workouts to database")
-        print(f"Current time: {current_time}")
-            
+@timer
+def check_filenames_for_keywords(file_list):
+    valid_workouts = []
+    for file in file_list:
+        print(f"Processing: {file['name']}")
+        result = parse_filename(file['name'])
+        if result[0]: 
+            valid_workouts.append((file, *result))
+    
+    print(f"Found {len(valid_workouts)} valid workouts:")
+    for file, date, workout_type in valid_workouts:
+        print(f"  - {date.strftime('%Y-%m-%d')}: {workout_type}")
+    return valid_workouts
+
+@timer
+def get_date_list_from_db():
+    try:
+        print("Retrieving dates from Supabase...")
+        result = supabase.table('Workouts_2024').select('date').execute()
+        dates = [datetime.fromisoformat(date['date']) for date in result.data]
+        print(f"Retrieved {len(dates)} dates from Supabase:")
+        for date in dates:
+            print(f"  - {date.strftime('%Y-%m-%d')}")
+        return dates
     except Exception as e:
-        print(f"Error processing files: {str(e)}")
+        print(f"Error retrieving dates from Supabase: {str(e)}")
         raise
     
+@timer
+def identify_new_workouts_to_be_added(existing_dates, valid_workouts):
+    try:
+        # Filter out workouts that already exist in DB
+        new_workouts = list(filter(
+            lambda workout: workout[1].date() not in map(lambda d: d.date(), existing_dates),
+            valid_workouts
+        ))
+
+        print(f"\nFound {len(new_workouts)} new workouts to add:")
+        for file, date, workout_type in new_workouts:
+            print(f"  - {date.strftime('%Y-%m-%d')}: {workout_type}")
+
+        return new_workouts
+
+    except Exception as e:
+        print(f"Error identifying new workouts: {str(e)}")
+        raise
+
+@timer
+def add_new_workouts_to_db(drive_service, new_workouts):
+    try:
+        workouts_added = 0
+        print("\nAdding new workouts to database...")
+
+        for file, date, workout_type in new_workouts:
+            print(f"\nProcessing: {date.strftime('%Y-%m-%d')} - {workout_type}")
+            
+            # Download file content
+            print("  Downloading file content...")
+            request = drive_service.files().get_media(fileId=file['id'])
+            file_data = io.BytesIO()
+            downloader = MediaIoBaseDownload(file_data, request)
+            
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            
+            content = file_data.getvalue().decode("utf-8")
+            print("  Successfully downloaded content")
+
+            # Insert into database
+            data = {
+                'date': date.isoformat(),
+                'workout_type': workout_type,
+                'notes': content
+            }
+            
+            print(f"  Inserting workout into database...")
+            result = supabase.table('Workouts_2024').insert(data).execute()
+            print("  Successfully inserted into database")
+            workouts_added += 1
+
+        print(f"\nSummary: Added {workouts_added} new workouts to database")
+        print(f"Current time: {datetime.now().strftime('%H:%M:%S')}")
+        return workouts_added
+
+    except Exception as e:
+        print(f"Error adding new workouts: {str(e)}")
+        raise
+
 if __name__ == "__main__":
+    start_time = time.time()
+    
     drive_service = setup_google_apis()
-    check_folder(drive_service)
+    file_list = get_list_of_files(drive_service)
+    valid_workouts = check_filenames_for_keywords(file_list)
+    date_list = get_date_list_from_db()
+    new_workouts = identify_new_workouts_to_be_added(date_list, valid_workouts)
+    add_new_workouts_to_db(drive_service, new_workouts)
+    
+    end_time = time.time()
+    print(f"\nTotal execution time: {end_time - start_time:.2f} seconds")

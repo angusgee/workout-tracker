@@ -43,7 +43,7 @@ def timer(func):
 def setup_google_apis():
     try:
         print("Setting up Google API clients...")
-        creds = service_account.Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+        creds = service_account.Credentials.from_service_account_file("/home/loop/workout-tracker/workout-tracker/credentials.json", scopes=SCOPES)
         print(f"Using service account: {creds.service_account_email}")
         
         drive_service = build('drive', 'v3', credentials=creds)
